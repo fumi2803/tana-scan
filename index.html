@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex,nofollow">
+<title>棚卸スキャン</title>
+<style>
+/* 片手で使うスマホ画面。上にカメラ、下に読み取った一覧。入力は大きなキーパッド */
+:root{
+  --bg:#eef1f3;--panel:#fff;--ink:#1b2730;--muted:#5d6b75;--line:#d5dce1;--soft:#e4eaee;
+  --accent:#1f5f8b;--accent-ink:#fff;--tag:#f2c230;--tag-ink:#2a2300;--good:#1e7a46;--bad:#b8382e;
+  --f-body:-apple-system,"Hiragino Sans","BIZ UDPGothic","Meiryo",sans-serif;
+  --f-num:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#12181d;--panel:#1a232a;--ink:#e3e9ed;--muted:#93a1ab;--line:#2c3942;--soft:#222d35;--accent:#5aa7da;--accent-ink:#0c1a24;--tag:#e5b72a;--tag-ink:#231c00;--good:#5cc78a;--bad:#ec7a70;color-scheme:dark}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px}
+body{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+button{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:12px;min-height:48px;padding:8px 14px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.45}
+button:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 55%,transparent)}
+.wrap{max-width:560px;margin:0 auto;padding:10px 12px 120px}
+header{display:flex;align-items:center;gap:8px;padding:4px 0 8px}
+header h1{font-size:18px;margin:0;flex:1}
+header .cnt{font-size:13px;color:var(--muted)}
+.cam{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/3;max-height:42vh;width:100%}
+#reader{width:100%;height:100%}
+#reader video{object-fit:cover!important;width:100%!important;height:100%!important}
+.cam .hint{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;gap:10px;padding:16px;font-size:14px}
+.cam .frame{position:absolute;left:8%;right:8%;top:32%;bottom:32%;border:3px solid rgba(255,255,255,.85);border-radius:10px;pointer-events:none;box-shadow:0 0 0 999px rgba(0,0,0,.25)}
+.camBtns{display:flex;gap:8px;margin:8px 0}
+.camBtns button{flex:1}
+.listHead{display:flex;align-items:center;gap:8px;margin:14px 0 6px}
+.listHead h2{font-size:15px;margin:0;flex:1}
+.list{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;padding:10px 12px;min-height:60px}
+.row:first-child{border-top:0}
+.row.flash{background:color-mix(in srgb,var(--tag) 35%,transparent)}
+.row .m{flex:1;min-width:0}
+.row .n{font-weight:700;font-size:15px;overflow-wrap:anywhere}
+.row .s{font-size:12px;color:var(--muted);font-family:var(--f-num);overflow-wrap:anywhere}
+.row .q{font-family:var(--f-num);font-size:22px;font-weight:700;text-align:right}
+.row .q small{display:block;font-size:11px;font-weight:400;color:var(--muted);font-family:var(--f-body)}
+.unreg{display:inline-block;font-size:11px;border:1px solid var(--bad);color:var(--bad);border-radius:999px;padding:0 6px;margin-left:4px;font-weight:400}
+.empty{padding:28px 14px;text-align:center;color:var(--muted);font-size:14px}
+.bottom{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom,0));display:flex;gap:8px;justify-content:center;z-index:5}
+.bottom button{flex:1;max-width:270px}
+/* シート */
+.ov{position:fixed;inset:0;background:rgba(10,16,20,.55);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--panel);width:100%;max-width:560px;max-height:94vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 14px calc(14px + env(safe-area-inset-bottom,0))}
+.sheet h3{margin:0 0 2px;font-size:18px;overflow-wrap:anywhere}
+.sub{font-size:13px;color:var(--muted);margin-bottom:8px;overflow-wrap:anywhere}
+.code{font-family:var(--f-num);font-size:15px}
+.kind{display:inline-block;background:var(--tag);color:var(--tag-ink);border-radius:6px;padding:1px 8px;font-size:13px;font-weight:700;margin-right:6px}
+.disp{background:var(--soft);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-height:76px}
+.disp .ex{font-family:var(--f-num);font-size:26px;word-break:break-all;text-align:right;min-height:32px}
+.disp .eq{font-family:var(--f-num);font-size:15px;color:var(--muted)}
+.prev{font-size:13px;color:var(--muted);margin:2px 0 6px}
+.mode{display:flex;gap:6px;margin:4px 0 8px}
+.mode label{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:10px;min-height:40px;font-size:14px}
+.mode label:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);font-weight:700}
+.mode input{accent-color:var(--accent)}
+.pad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.pad button{min-height:58px;font-size:24px;font-family:var(--f-num);border-radius:12px}
+.pad .op{background:var(--soft);font-weight:700}
+.acts{display:flex;gap:8px;margin-top:10px}
+.acts button{flex:1;min-height:54px}
+.hist{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.hist div{display:flex;align-items:center;gap:8px;background:var(--soft);border-radius:10px;padding:6px 6px 6px 12px}
+.hist span{flex:1;font-family:var(--f-num);font-size:18px}
+.hist small{color:var(--muted);font-size:12px;font-family:var(--f-body)}
+.hist button{min-height:40px;padding:4px 12px;font-size:14px}
+.menu{display:flex;flex-direction:column;gap:10px}
+.menu .note,.note{font-size:13px;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top,0));z-index:30;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;max-width:calc(100% - 24px)}
+textarea{width:100%;min-height:120px;font-family:var(--f-num);font-size:12px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel);color:var(--ink)}
+input[type=text]{font:inherit;font-family:var(--f-num);font-size:22px;width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink)}
+</style>
+</head><body>
+<div class="wrap">
+  <div id="warnStore" hidden style="background:var(--bad);color:#fff;border-radius:12px;padding:12px;margin:6px 0;font-weight:700">⚠ このiPhoneに記録を保存できない状態です。ページを閉じたり戻ったりすると、数えた記録が消えます。こまめに「CSVを出す」で保存してください。(プライベートブラウズをやめると直ることがあります)</div>
+  <div id="warnBackup" hidden style="background:var(--tag);color:var(--tag-ink);border-radius:12px;padding:10px 12px;margin:6px 0;display:flex;gap:8px;align-items:center"><span style="flex:1" id="warnBackupText"></span><button id="btnBackupNow" style="min-height:40px">今保存</button></div>
+  <header><h1>棚卸スキャン</h1><span class="cnt" id="cnt"></span></header>
+  <div class="cam">
+    <div id="reader"></div>
+    <div class="frame" id="frame" hidden></div>
+    <div class="hint" id="camHint">
+      <div>「読み取り開始」を押すとカメラが起動します。<br>バーコードを白い枠に入れてください。</div>
+    </div>
+  </div>
+  <div class="camBtns">
+    <button class="primary" id="btnCam">読み取り開始</button>
+    <button id="btnPhoto">写真で読む</button>
+    <button id="btnManual">手で入れる</button>
+  </div>
+  <button class="primary" id="btnPick" style="width:100%;margin-bottom:4px">リストから選ぶ(バーコードなし)</button>
+  <input type="file" id="fPhoto" accept="image/*" capture="environment" hidden>
+  <div class="listHead"><h2>読み取った商品</h2><button id="btnUndo" disabled>1つ前を取り消す</button></div>
+  <div class="list" id="list"></div>
+</div>
+<div class="bottom">
+  <button id="btnMenu">商品リスト・設定</button>
+  <button class="primary" id="btnExport">CSVを出す</button>
+</div>
+
+<div class="ov" id="ovEntry" hidden><div class="sheet" id="entry" role="dialog" aria-modal="true"></div></div>
+<div class="ov" id="ovMenu" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <h3 id="mTitle">商品リスト・設定</h3>
+  <div class="menu">
+    <div class="sub" id="masterInfo"></div>
+    <button id="btnMaster">商品リスト(CSV)を読み込む</button><input type="file" id="fMaster" accept=".csv,text/csv,text/plain" hidden>
+    <p class="note">「tana_master.csv」(または コード,品名 だけのCSV)を読み込むと、読み取ったときに品名やケース/バラが出ます。リストはこのiPhoneの中だけに保存されます。</p>
+    <hr style="border:0;border-top:1px solid var(--line);width:100%">
+    <button class="danger" id="btnClear">読み取った数を全部消す</button>
+    <p class="note">CSVを出して在庫帳に取り込んだあと、次の棚卸を始めるときに使います。</p>
+    <button id="mClose">閉じる</button>
+  </div>
+</div></div>
+<div class="ov" id="ovExport" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="xTitle">
+  <h3 id="xTitle">CSVを出す</h3>
+  <div class="sub" id="xInfo"></div>
+  <div class="menu">
+    <button id="xShare">共有する(メール・LINE など)</button>
+    <button class="primary" id="xDownload">CSVを保存・共有する</button>
+    <button id="xCopy">中身をコピー</button>
+    <textarea id="xText" readonly aria-label="CSVの中身"></textarea>
+    <button id="xClose">閉じる</button>
+  </div>
+</div></div>
+<div class="ov" id="ovPick" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pTitle" style="max-height:94vh">
+  <h3 id="pTitle">リストから選ぶ</h3>
+  <div style="display:flex;gap:6px;margin:6px 0"><select id="pLoc" style="flex:1;font:inherit;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0 8px"></select>
+  <select id="pKind" style="font:inherit;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0 8px"><option value="ケース">ケース</option><option value="バラ">バラ</option><option value="">全部</option></select></div>
+  <input type="text" id="pQ" placeholder="品名・コードで探す(例 GP525)" style="font-family:var(--f-body);font-size:17px" autocomplete="off">
+  <div class="list" id="pList" style="margin-top:8px;max-height:60vh;overflow:auto"></div>
+  <div class="acts"><button id="pClose">閉じる</button></div>
+</div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="html5-qrcode.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Number(n).toLocaleString('ja-JP',{maximumFractionDigits:3});
+const codeKey=c=>{c=String(c??'').normalize('NFKC').replace(/\s/g,'').toUpperCase();return /^\d+$/.test(c)?c.replace(/^0+(?=\d)/,''):c;};
+// ---- 保存(このiPhoneの中だけ)
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){return false;}}};
+let entries=store.get('tn_entries',[]);   // [{code, adds:[{n, at}]}]
+let undoStack=store.get('tn_undo',[]);    // [code]
+let master=store.get('tn_master',null);   // {at, items:{key:{code,name,kind,per,unit,loc}}}
+let storeOK=true;
+function save(){const ok=store.set('tn_entries',entries)&&store.set('tn_undo',undoStack.slice(-200));if(!ok){storeOK=false;$('warnStore').hidden=false;}checkBackup();}
+// 保存できるか最初に確かめる
+(function(){try{localStorage.setItem('tn_test','1');if(localStorage.getItem('tn_test')!=='1')throw 0;localStorage.removeItem('tn_test');}catch(e){storeOK=false;}
+  if(!storeOK)$('warnStore').hidden=false;
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist();}catch(e){}})();
+// こまめなバックアップの声かけ(前回CSVを出してから20回入力したら)
+function countAdds(){return entries.reduce((s,e)=>s+e.adds.length,0);}
+function checkBackup(){const last=store.get('tn_lastExportAdds',0);const n=countAdds()-last;
+  if(n>=20){$('warnBackupText').textContent=`前回の保存から ${n} 件入力しました。念のためCSVを保存しましょう。`;$('warnBackup').hidden=false;}else $('warnBackup').hidden=true;}
+// ページを離れようとしたら確認
+window.addEventListener('beforeunload',e=>{if(entries.length){e.preventDefault();e.returnValue='';}});
+const total=e=>e.adds.reduce((s,a)=>s+a.n,0);
+const info=code=>master&&master.items[codeKey(code)]||null;
+
+// ---- 一覧
+let flashCode='';
+function render(){
+  const n=entries.length;$('cnt').textContent=n?`${n}件`:'';
+  $('btnUndo').disabled=!undoStack.length;
+  if(!n){$('list').innerHTML='<div class="empty">まだ何も読み取っていません。<br>「読み取り開始」を押して、バーコードを読んでください。</div>';return;}
+  $('list').innerHTML=entries.slice().reverse().map(e=>{const m=info(e.code);
+    return `<button class="row ${e.code===flashCode?'flash':''}" data-code="${esc(e.code)}"><div class="m"><div class="n">${m?esc(m.name):'<span class="code">'+esc(e.code)+'</span><span class="unreg">未登録</span>'}</div>
+      <div class="s">${m?`${esc(m.kind)}${m.per&&m.per!==1?'×'+fmt(m.per):''} ・ ${esc(e.code)}`:''}${e.adds.length>1?` ・ ${e.adds.map(a=>fmt(a.n)).join('+')}`:''}</div></div>
+      <div class="q">${fmt(total(e))}<small>${m&&m.kind==='ケース'?'ケース':m&&m.unit?esc(m.kind==='バラ'?m.unit:'個'):''}</small></div></button>`;}).join('');
+}
+
+// ---- 数量の入力(足し算キーパッド)
+let cur=null; // {code, expr, mode}
+function evalExpr(s){
+  s=s.replace(/×/g,'*').replace(/÷/g,'/');
+  if(!/^[\d.+\-*/]*$/.test(s))return null;
+  const t=s.match(/\d+(?:\.\d+)?|[+\-*/]/g);if(!t)return null;
+  let i=0;const num=()=>{const x=t[i++];const v=Number(x);if(x==null||isNaN(v))throw 0;return v;};
+  const term=()=>{let v=num();while(t[i]==='*'||t[i]==='/'){const o=t[i++];const r=num();v=o==='*'?v*r:v/r;}return v;};
+  try{let v=term();while(t[i]==='+'||t[i]==='-'){const o=t[i++];const r=term();v=o==='+'?v+r:v-r;}if(i!==t.length)return null;return Math.round(v*1000)/1000;}catch(e){return null;}
+}
+function openEntry(code){
+  pauseCam();
+  const e=entries.find(x=>codeKey(x.code)===codeKey(code));const m=info(code);
+  cur={code,expr:'',mode:'add'};
+  $('entry').innerHTML=`
+    <h3>${m?esc(m.name):'未登録のコード'}</h3>
+    <div class="sub">${m?`<span class="kind">${esc(m.kind)}${m.per&&m.per!==1?' '+fmt(m.per)+esc(m.unit||'')+(m.kind==='ケース'||m.kind==='中箱'?'入':''):''}</span>`:''}<span class="code">${esc(code)}</span>${m&&m.loc?' ・ '+esc(m.loc):''}</div>
+    ${e?`<div class="prev">これまでの合計 <b>${fmt(total(e))}</b>${e.adds.length>1?`(${e.adds.map(a=>fmt(a.n)).join('+')})`:''}</div>
+      <div class="mode"><label><input type="radio" name="md" value="add" checked>足す</label><label><input type="radio" name="md" value="set">この数に直す</label></div>`:''}
+    <div class="disp"><div class="ex" id="ex"></div><div class="eq" id="eq"></div></div>
+    <div class="pad">
+      ${['7','8','9','⌫','4','5','6','+','1','2','3','×','0','00','.','C'].map(k=>`<button data-k="${k}" class="${'⌫+×C'.includes(k)?'op':''}">${k}</button>`).join('')}
+    </div>
+    <div class="acts"><button id="eCancel">やめる</button><button class="primary" id="eOk">${e?'決定':'追加する'}</button></div>`;
+  $('ovEntry').hidden=false;
+  document.querySelectorAll('input[name=md]').forEach(r=>r.onchange=()=>{cur.mode=r.value;drawExpr();});
+  drawExpr();
+}
+function drawExpr(){const v=evalExpr(cur.expr);$('ex').textContent=cur.expr||'0';$('eq').textContent=/[+×]/.test(cur.expr)&&v!=null?`= ${fmt(v)}`:'';$('eOk').disabled=!(v>0)&&!(cur.mode==='set'&&v===0);}
+function key(k){
+  if(!cur)return;
+  if(k==='C')cur.expr='';else if(k==='⌫')cur.expr=cur.expr.slice(0,-1);
+  else if(k==='+'||k==='×'){if(cur.expr&&!/[+×.]$/.test(cur.expr))cur.expr+=k;}
+  else if(k==='.'){const last=cur.expr.split(/[+×]/).pop();if(!last.includes('.'))cur.expr+=(last?'':'0')+'.';}
+  else if(cur.expr.length<40)cur.expr+=k;
+  drawExpr();
+}
+function commit(){
+  const v=evalExpr(cur.expr);if(v==null)return;
+  let e=entries.find(x=>codeKey(x.code)===codeKey(cur.code));
+  if(!e){e={code:cur.code,adds:[]};entries.push(e);}
+  else{entries=entries.filter(x=>x!==e);entries.push(e);}
+  const at=Date.now();
+  if(cur.mode==='set'){e.adds=[{n:v,at}];}else{e.adds.push({n:v,at});}
+  undoStack.push(e.code);save();flashCode=e.code;closeEntry();render();
+  toast(`${info(e.code)?info(e.code).name:e.code}:合計 ${fmt(total(e))}`);
+  setTimeout(()=>{flashCode='';render();},1500);
+}
+function closeEntry(){$('ovEntry').hidden=true;cur=null;if(pickReturn){pickReturn=false;$('ovPick').hidden=false;pickDraw();return;}resumeCam();}
+$('entry').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.k)key(b.dataset.k);else if(b.id==='eOk')commit();else if(b.id==='eCancel')closeEntry();});
+document.addEventListener('keydown',e=>{if(!cur||$('ovEntry').hidden)return;
+  if(/^[0-9]$/.test(e.key))key(e.key);else if(e.key==='+')key('+');else if(e.key==='*')key('×');else if(e.key==='.')key('.');
+  else if(e.key==='Backspace')key('⌫');else if(e.key==='Enter'){e.preventDefault();if(!$('eOk').disabled)commit();}else if(e.key==='Escape')closeEntry();});
+
+// ---- Bluetoothバーコードリーダー(キーボードとして入力される)
+let kbBuf='',kbAt=0;
+document.addEventListener('keydown',e=>{
+  if(!$('ovEntry').hidden||!$('ovMenu').hidden||!$('ovExport').hidden)return;
+  if(e.target&&/INPUT|TEXTAREA/.test(e.target.tagName))return;
+  const now=Date.now();if(now-kbAt>300)kbBuf='';kbAt=now;
+  if(e.key==='Enter'||e.key==='Tab'){if(kbBuf.length>=3){e.preventDefault();const c=kbBuf;kbBuf='';beep();openEntry(c);}kbBuf='';return;}
+  if(/^[0-9A-Za-z-]$/.test(e.key))kbBuf+=e.key;
+});
+// ---- 1件の修正・削除
+function openEdit(code){
+  pauseCam();
+  const e=entries.find(x=>x.code===code);if(!e)return;const m=info(code);let armed=false;
+  const draw=()=>{
+    $('entry').innerHTML=`<h3>${m?esc(m.name):'未登録のコード'}</h3>
+      <div class="sub">${m?`<span class="kind">${esc(m.kind)}</span>`:''}<span class="code">${esc(code)}</span></div>
+      <div class="prev">合計 <b>${fmt(total(e))}</b>。間違えた分は「消す」で消せます。</div>
+      <div class="hist">${e.adds.map((a,i)=>`<div><span>${fmt(a.n)} <small>${new Date(a.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</small></span><button data-del="${i}">消す</button></div>`).join('')}</div>
+      <div class="acts"><button id="aAdd">数を足す・直す</button></div>
+      <div class="acts"><button class="danger" id="aDel">${armed?'もう一度押すと消えます':'この商品を一覧から消す'}</button><button id="aClose">閉じる</button></div>`;
+  };
+  draw();$('ovEntry').hidden=false;
+  $('entry').onclick=ev=>{const b=ev.target.closest('button');if(!b)return;
+    if(b.dataset.del!=null){e.adds.splice(Number(b.dataset.del),1);if(!e.adds.length)entries=entries.filter(x=>x!==e);undoStack=undoStack.filter(c=>c!==code||entries.includes(e));save();render();if(!entries.includes(e)){$('entry').onclick=null;closeEntry();toast('消しました');return;}draw();}
+    else if(b.id==='aAdd'){$('entry').onclick=null;openEntry(code);}
+    else if(b.id==='aDel'){if(!armed){armed=true;draw();return;}entries=entries.filter(x=>x!==e);undoStack=undoStack.filter(c=>c!==code);save();render();$('entry').onclick=null;closeEntry();toast('一覧から消しました');}
+    else if(b.id==='aClose'){$('entry').onclick=null;closeEntry();}};
+}
+$('list').addEventListener('click',e=>{const r=e.target.closest('.row');if(r)openEdit(r.dataset.code);});
+$('btnUndo').onclick=()=>{
+  const code=undoStack.pop();if(!code){render();return;}
+  const e=entries.find(x=>x.code===code);
+  if(e){const a=e.adds.pop();if(!e.adds.length)entries=entries.filter(x=>x!==e);toast(`取り消しました(${info(code)?info(code).name:code} の ${fmt(a.n)})`);}
+  save();render();
+};
+
+// ---- 手入力
+function openManual(){
+  pauseCam();
+  $('entry').innerHTML=`<h3>コードを手で入れる</h3><div class="sub">バーコードが読めないときに使います。</div>
+    <input type="text" id="mCode" inputmode="numeric" autocomplete="off" placeholder="例 66599" aria-label="コード">
+    <div class="acts"><button id="mCancel">やめる</button><button class="primary" id="mNext">次へ(数を入れる)</button></div>`;
+  $('ovEntry').hidden=false;setTimeout(()=>{const m=$('mCode');if(m)m.focus();},50);
+  $('entry').onclick=ev=>{const b=ev.target.closest('button');if(!b)return;
+    if(b.id==='mNext'){const c=$('mCode').value.normalize('NFKC').replace(/\s/g,'');if(!c){toast('コードを入れてください');return;}$('entry').onclick=null;openEntry(c);}
+    if(b.id==='mCancel'){$('entry').onclick=null;closeEntry();}};
+}
+$('btnManual').onclick=openManual;
+
+// ---- カメラ
+let qr=null,camOn=false,lastCode='',lastAt=0,audio=null;
+function beep(){try{if(!audio)return;const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=1800;g.gain.value=0.15;o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+0.09);}catch(e){}}
+async function startCam(){
+  if(typeof Html5Qrcode==='undefined'){toast('読み取りの部品(html5-qrcode.min.js)が見つかりません。');return;}
+  try{if(!audio)audio=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();}catch(e){}
+  const F=Html5QrcodeSupportedFormats;
+  if(!qr)qr=new Html5Qrcode('reader',{formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_39,F.CODE_128,F.ITF,F.CODE_93,F.CODABAR],verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:true}});
+  $('btnCam').disabled=true;
+  try{
+    await qr.start({facingMode:'environment'},{fps:12,qrbox:(w,h)=>({width:Math.floor(w*0.84),height:Math.floor(h*0.36)}),aspectRatio:4/3,disableFlip:true},onScan,()=>{});
+    camOn=true;$('camHint').hidden=true;$('frame').hidden=false;$('btnCam').textContent='読み取り停止';
+  }catch(e){
+    toast('ここではカメラが動きませんでした。「写真で読む」を使ってください。');
+  }
+  $('btnCam').disabled=false;
+}
+async function stopCam(){if(qr&&camOn){try{await qr.stop();}catch(e){}}camOn=false;$('camHint').hidden=false;$('frame').hidden=true;$('btnCam').textContent='読み取り開始';}
+function pauseCam(){if(qr&&camOn){try{qr.pause(true);}catch(e){}}}
+function resumeCam(){if(qr&&camOn){try{qr.resume();}catch(e){}}}
+function onScan(text){
+  const code=String(text).trim();const now=Date.now();
+  if(!$('ovEntry').hidden||!$('ovMenu').hidden||!$('ovExport').hidden)return;
+  if(code===lastCode&&now-lastAt<1500)return;
+  lastCode=code;lastAt=now;beep();openEntry(code);
+}
+// ---- ITF-14(ケースの外箱に多いバーコード)の読み取り補助。読み取り部品が苦手なので自前で読む
+const ITFP=['nnwwn','wnnnw','nwnnw','wwnnn','nnwnw','wnwnn','nwwnn','nnnww','wnnwn','nwnwn'];
+function gtinOK(s){const d=s.split('').map(Number);const c=d.pop();let sum=0;d.reverse().forEach((x,i)=>sum+=x*(i%2===0?3:1));return (10-sum%10)%10===c;}
+function runsOf(row){
+  let mn=255,mx=0;for(const v of row){if(v<mn)mn=v;if(v>mx)mx=v;}
+  if(mx-mn<50)return null;const t=(mn+mx)/2;
+  const runs=[];let cur=row[0]<t,len=0,first=cur;
+  for(const v of row){const b=v<t;if(b===cur)len++;else{runs.push(len);cur=b;len=1;}}runs.push(len);
+  return {runs,firstBlack:first};
+}
+function digitOf(ws){const idx=ws.map((w,i)=>[w,i]).sort((a,b)=>b[0]-a[0]);const wide=new Set([idx[0][1],idx[1][1]]);
+  const wAvg=(idx[0][0]+idx[1][0])/2,nAvg=(idx[2][0]+idx[3][0]+idx[4][0])/3;if(wAvg<nAvg*1.6)return -1;
+  const p=ws.map((_,i)=>wide.has(i)?'w':'n').join('');return ITFP.indexOf(p);}
+function decodeRuns(runs,firstBlack){
+  // runs[i] が黒になる添字
+  const startB=firstBlack?0:1;
+  for(let i=startB;i+4+70+3<=runs.length;i+=2){
+    const s=runs.slice(i,i+4);const n=(s[0]+s[1]+s[2]+s[3])/4;
+    if(Math.max(...s)>n*1.7||Math.min(...s)<n*0.4)continue;
+    if(i>0&&runs[i-1]<n*4)continue; // 左の余白
+    let out='',ok=true,p=i+4;
+    for(let k=0;k<7;k++){const g=runs.slice(p,p+10);const a=digitOf([g[0],g[2],g[4],g[6],g[8]]),b=digitOf([g[1],g[3],g[5],g[7],g[9]]);if(a<0||b<0){ok=false;break;}out+=a+''+b;p+=10;}
+    if(!ok)continue;
+    const e=runs.slice(p,p+3);if(!(e[0]>n*1.6&&e[1]<n*1.7&&e[2]<n*1.7))continue;
+    if(out.length===14&&gtinOK(out))return out;
+  }
+  return null;
+}
+let itfCanvas=null,itfHits=[];
+function itfTick(){
+  if(!camOn||!$('ovEntry').hidden||!$('ovMenu').hidden||!$('ovExport').hidden)return;
+  const v=document.querySelector('#reader video');if(!v||!v.videoWidth)return;
+  const W=Math.min(960,v.videoWidth),H=Math.round(v.videoHeight*W/v.videoWidth);
+  if(!itfCanvas)itfCanvas=document.createElement('canvas');itfCanvas.width=W;itfCanvas.height=H;
+  const ctx=itfCanvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(v,0,0,W,H);
+  let found=null;
+  for(let k=0;k<9&&!found;k++){
+    const y=Math.round(H*(0.3+0.4*k/8));const d=ctx.getImageData(0,y,W,1).data;const row=new Array(W);
+    for(let x=0;x<W;x++)row[x]=d[x*4]*0.299+d[x*4+1]*0.587+d[x*4+2]*0.114;
+    const r=runsOf(row);if(!r)continue;
+    found=decodeRuns(r.runs,r.firstBlack);
+    if(!found){const rv=r.runs.slice().reverse();const fb=(r.runs.length%2===1)?r.firstBlack:!r.firstBlack;found=decodeRuns(rv,fb);}
+  }
+  const now=Date.now();itfHits=itfHits.filter(h=>now-h.t<1200);
+  if(found){itfHits.push({c:found,t:now});if(itfHits.filter(h=>h.c===found).length>=2){itfHits=[];onScan(found);}}
+}
+setInterval(itfTick,220);
+$('btnCam').onclick=()=>camOn?stopCam():startCam();
+// ---- 写真で読む(カメラが使えないとき用)
+$('btnPhoto').onclick=()=>{if(camOn)stopCam();$('fPhoto').click();};
+$('fPhoto').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  toast('読み取り中…');
+  let code=null;
+  let why='';
+  try{code=await scanPhoto(f);}catch(err){why=String(err&&err.message||err).slice(0,60);}
+  if(code){beep();openEntry(String(code).trim());}else toast('読めませんでした。もう少し近づいて、まっすぐ撮ってください。'+(why?'('+why+')':''));
+};
+function getQR(){if(!qr){const F=Html5QrcodeSupportedFormats;qr=new Html5Qrcode('reader',{formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_39,F.CODE_128,F.ITF,F.CODE_93,F.CODABAR],verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:true}});}return qr;}
+async function loadImg(f){
+  try{return await createImageBitmap(f);}catch(e){}
+  return await new Promise((ok,ng)=>{const im=new Image();im.onload=()=>ok(im);im.onerror=()=>ng(new Error('画像を開けません'));im.src=URL.createObjectURL(f);});
+}
+// 大きい写真をいくつかの大きさ・切り抜きに縮めてから読む(iPhoneの大きな写真対策)
+async function scanPhoto(f){
+  const img=await loadImg(f);const IW=img.width,IH=img.height;
+  const crops=[[0,0,1,1],[0.15,0.25,0.7,0.5],[0.05,0.15,0.9,0.7],[0.25,0.3,0.5,0.4]];
+  const sizes=[1280,900,1800,640];
+  const c=document.createElement('canvas');const ctx=c.getContext('2d',{willReadFrequently:true});
+  for(const [cx,cy,cw,ch] of crops){for(const S of sizes){
+    const sw=IW*cw,sh=IH*ch;const k=Math.min(1,S/Math.max(sw,sh));
+    c.width=Math.round(sw*k);c.height=Math.round(sh*k);ctx.drawImage(img,IW*cx,IH*cy,sw,sh,0,0,c.width,c.height);
+    const it=itfFromCanvas(c,ctx);if(it)return it;
+    if(typeof Html5Qrcode!=='undefined'){
+      const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.92));
+      try{const t=await getQR().scanFile(new File([blob],'p.jpg',{type:'image/jpeg'}),false);if(t)return t;}catch(e){}
+    }
+  }}
+  return null;
+}
+function itfFromCanvas(c,ctx){const W=c.width,H=c.height;
+  for(let k=0;k<30;k++){const y=Math.round(H*(0.1+0.8*k/29));const d=ctx.getImageData(0,y,W,1).data;const row=new Array(W);
+    for(let x=0;x<W;x++)row[x]=d[x*4]*0.299+d[x*4+1]*0.587+d[x*4+2]*0.114;
+    const r=runsOf(row);if(!r)continue;let fd=decodeRuns(r.runs,r.firstBlack);
+    if(!fd){const rv=r.runs.slice().reverse();const fb=(r.runs.length%2===1)?r.firstBlack:!r.firstBlack;fd=decodeRuns(rv,fb);}
+    if(fd)return fd;}
+  return null;}
+async function itfFromImage(f){
+  const img=await createImageBitmap(f);const W=Math.min(1600,img.width),H=Math.round(img.height*W/img.width);
+  const c=document.createElement('canvas');c.width=W;c.height=H;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,W,H);
+  for(let k=0;k<40;k++){const y=Math.round(H*(0.1+0.8*k/39));const d=ctx.getImageData(0,y,W,1).data;const row=new Array(W);
+    for(let x=0;x<W;x++)row[x]=d[x*4]*0.299+d[x*4+1]*0.587+d[x*4+2]*0.114;
+    const r=runsOf(row);if(!r)continue;let fd=decodeRuns(r.runs,r.firstBlack);
+    if(!fd){const rv=r.runs.slice().reverse();const fb=(r.runs.length%2===1)?r.firstBlack:!r.firstBlack;fd=decodeRuns(rv,fb);}
+    if(fd)return fd;}
+  return null;
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&camOn)stopCam();});
+
+// ---- 商品リスト
+function decode(buf){const u8=new Uint8Array(buf);try{return new TextDecoder('utf-8',{fatal:true}).decode(u8).replace(/^﻿/,'');}catch(e){return new TextDecoder('shift_jis').decode(u8);}}
+function splitCSV(line){const out=[];let c='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(q){if(ch==='"'){if(line[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}else if(ch==='"')q=true;else if(ch===','){out.push(c);c='';}else c+=ch;}out.push(c);return out.map(s=>s.trim());}
+function loadMaster(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());if(!lines.length)throw new Error('空のファイルです');
+  let h=splitCSV(lines[0]);let start=1;
+  if(h.indexOf('コード')<0||h.indexOf('商品')<0){h=['コード','商品'];start=0;}
+  const ix=n=>h.indexOf(n);
+  const items={};let n=0;
+  for(let i=start;i<lines.length;i++){const r=splitCSV(lines[i]);const code=r[ix('コード')];if(!code||!/^[0-9A-Za-z-]{3,}$/.test(code))continue;
+    let nm=r[ix('商品')]||'';let kd=ix('区分')>=0?r[ix('区分')]:'';if(!kd&&/^\(ケ\)/.test(nm)){kd='ケース';nm=nm.replace(/^\(ケ\)/,'');}
+    items[codeKey(code)]={i:n,code,name:nm,kind:kd,per:ix('換算数')>=0?Number(r[ix('換算数')])||null:null,unit:ix('単位')>=0?r[ix('単位')]:'',loc:ix('場所')>=0?r[ix('場所')]:''};n++;}
+  master={at:Date.now(),n,items};
+  if(!store.set('tn_master',master))throw new Error('このiPhoneに保存できませんでした');
+  return n;
+}
+function masterInfo(){$('masterInfo').textContent=master?`商品リスト:${master.n}コード(${new Date(master.at).toLocaleDateString('ja-JP')} に読み込み)`:'商品リストはまだ読み込まれていません。';}
+$('btnMenu').onclick=()=>{pauseCam();masterInfo();clearArmed=false;$('btnClear').textContent='読み取った数を全部消す';$('ovMenu').hidden=false;};
+$('mClose').onclick=()=>{$('ovMenu').hidden=true;resumeCam();};
+$('btnMaster').onclick=()=>$('fMaster').click();
+$('fMaster').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const n=loadMaster(decode(await f.arrayBuffer()));masterInfo();render();toast(`商品リストを読み込みました(${n}コード)`);}catch(err){toast(err.message||'読み込めませんでした');}e.target.value='';};
+let clearArmed=false;
+$('btnClear').onclick=()=>{if(!entries.length){toast('消すものはありません');return;}if(!clearArmed){clearArmed=true;$('btnClear').textContent='もう一度押すと全部消えます(元に戻せません)';return;}
+  entries=[];undoStack=[];save();render();clearArmed=false;$('btnClear').textContent='読み取った数を全部消す';$('ovMenu').hidden=true;resumeCam();toast('全部消しました');};
+
+// ---- CSV出力
+const csvCell=s=>{s=String(s??'');return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+function buildCSV(){return entries.map(e=>{const m=info(e.code);return [e.code,m?m.name:'',total(e)].map(csvCell).join(',');}).join('\r\n')+'\r\n';}
+function fname(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `棚卸_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.csv`;}
+function markExported(){store.set('tn_lastExportAdds',countAdds());checkBackup();}
+$('btnExport').onclick=()=>{
+  if(!entries.length){toast('まだ何も読み取っていません');return;}
+  pauseCam();const csv=buildCSV();$('xText').value=csv;
+  $('xInfo').textContent=`${entries.length}件。在庫帳の「棚卸CSVを取り込む」にそのまま入れられます。`;
+  const f=new File(['﻿'+csv],fname(),{type:'text/csv'});
+  $('xShare').hidden=!(navigator.canShare&&navigator.canShare({files:[f]}));
+  $('ovExport').hidden=false;
+};
+$('xShare').onclick=async()=>{const f=new File(['﻿'+buildCSV()],fname(),{type:'text/csv'});try{await navigator.share({files:[f],title:fname()});markExported();}catch(e){if(e&&e.name!=='AbortError')toast('共有できませんでした。「ファイルとして保存」を使ってください。');}};
+let dl=null;try{window.claude&&window.claude.use&&window.claude.use('downloads').then(d=>{dl=d;}).catch(()=>{});}catch(e){}
+$('xDownload').onclick=async()=>{
+  if(dl){try{await dl.save({filename:fname(),data:'﻿'+buildCSV()});toast('保存しました');markExported();}catch(e){if(e&&e.code!=='declined')toast('保存できませんでした。「中身をコピー」を使ってください。');}return;}
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+buildCSV()],{type:'text/csv'}));a.download=fname();document.body.appendChild(a);a.click();a.remove();markExported();};
+$('xCopy').onclick=async()=>{try{await navigator.clipboard.writeText(buildCSV());toast('コピーしました。在庫帳の「貼り付ける」に貼れます。');}catch(e){$('xText').select();toast('下の文字を長押ししてコピーしてください');}};
+$('xClose').onclick=()=>{$('ovExport').hidden=true;resumeCam();};
+
+// ---- リストから選ぶ
+function pickDraw(){
+  if(!master){$('pList').innerHTML='<div class="empty">先に商品リストを読み込んでください。</div>';return;}
+  const loc=$('pLoc').value,kd=$('pKind').value,q=$('pQ').value.normalize('NFKC').toUpperCase().replace(/\s/g,'');
+  const done=new Set(entries.map(e=>codeKey(e.code)));
+  const seen=new Set();const items=Object.values(master.items).filter(m=>{
+    if(loc&&m.loc!==loc)return false;if(kd&&m.kind!==kd)return false;
+    if(q&&!(m.name.normalize('NFKC').toUpperCase().replace(/\s/g,'').includes(q)||String(m.code).includes(q)))return false;
+    const k=m.name+'|'+m.kind+'|'+m.loc;if(seen.has(k))return false;seen.add(k);return true;}).sort((x,y)=>(x.i??1e9)-(y.i??1e9)||x.name.localeCompare(y.name,'ja')).slice(0,300);
+  $('pList').innerHTML=items.length?items.map(m=>{const e=entries.find(x=>codeKey(x.code)===codeKey(m.code));
+    return `<button class="row" data-code="${esc(m.code)}"><div class="m"><div class="n">${esc(m.name)}</div><div class="s">${esc(m.kind)}${m.per&&m.per!==1?'×'+fmt(m.per):''} ・ ${esc(m.code)}${m.loc?' ・ '+esc(m.loc):''}</div></div><div class="q">${e?fmt(total(e)):'<small>未</small>'}</div></button>`;}).join(''):'<div class="empty">見つかりません</div>';
+}
+$('btnPick').onclick=()=>{pauseCam();
+  const locs=master?[...new Set(Object.values(master.items).map(m=>m.loc).filter(Boolean))]:[];
+  const prev=$('pLoc').value;$('pLoc').innerHTML='<option value="">全部の場所</option>'+locs.map(l=>`<option${l===prev?' selected':''}>${esc(l)}</option>`).join('');
+  $('ovPick').hidden=false;pickDraw();};
+$('pLoc').onchange=pickDraw;$('pKind').onchange=pickDraw;$('pQ').oninput=pickDraw;
+$('pClose').onclick=()=>{$('ovPick').hidden=true;render();resumeCam();};
+$('pList').addEventListener('click',e=>{const r=e.target.closest('.row');if(!r)return;$('ovPick').hidden=true;openEntry(r.dataset.code);pickReturn=true;});
+let pickReturn=false;
+let tt;function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2600);}
+render();checkBackup();
+document.addEventListener('click',e=>{if(e.target&&e.target.id==='btnBackupNow')$('btnExport').click();});
+})();
+</script>
+</body></html>
