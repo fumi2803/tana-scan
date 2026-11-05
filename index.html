@@ -94,6 +94,7 @@ input[type=text]{font:inherit;font-family:var(--f-num);font-size:22px;width:100%
   </div>
   <div class="camBtns">
     <button class="primary" id="btnCam">読み取り開始</button>
+    <button id="btnZoom">ズーム 2倍</button>
     <button id="btnPhoto">写真で読む</button>
     <button id="btnManual">手で入れる</button>
   </div>
@@ -291,10 +292,12 @@ async function startCam(){
   if(typeof Html5Qrcode==='undefined'){toast('読み取りの部品(html5-qrcode.min.js)が見つかりません。');return;}
   try{if(!audio)audio=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();}catch(e){}
   const F=Html5QrcodeSupportedFormats;
-  if(!qr)qr=new Html5Qrcode('reader',{formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_39,F.CODE_128,F.ITF,F.CODE_93,F.CODABAR],verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:true}});
+  if(!qr)qr=new Html5Qrcode('reader',{formatsToSupport:[F.EAN_13,F.EAN_8,F.ITF,F.CODE_128,F.UPC_A],verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:true}});
   $('btnCam').disabled=true;
   try{
-    await qr.start({facingMode:'environment'},{fps:12,qrbox:(w,h)=>({width:Math.floor(w*0.84),height:Math.floor(h*0.36)}),aspectRatio:4/3,disableFlip:true},onScan,()=>{});
+    await qr.start({facingMode:'environment'},{fps:15,qrbox:(w,h)=>({width:Math.floor(w*0.92),height:Math.floor(h*0.5)}),aspectRatio:4/3,disableFlip:true,
+      videoConstraints:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080},advanced:[{focusMode:'continuous'}]}},onScan,()=>{});
+    setZoom(zoomLv);
     camOn=true;$('camHint').hidden=true;$('frame').hidden=false;$('btnCam').textContent='読み取り停止';
   }catch(e){
     toast('ここではカメラが動きませんでした。「写真で読む」を使ってください。');
@@ -358,6 +361,13 @@ function itfTick(){
 }
 setInterval(itfTick,220);
 $('btnCam').onclick=()=>camOn?stopCam():startCam();
+// ---- ズーム(少し離れて大きく映す。iPhoneは近すぎるとピントが合わないため)
+let zoomLv=store.get('tn_zoom',2);
+function camTrack(){const v=document.querySelector('#reader video');return v&&v.srcObject&&v.srcObject.getVideoTracks?v.srcObject.getVideoTracks()[0]:null;}
+async function setZoom(z){$('btnZoom').textContent='ズーム '+z+'倍';const t=camTrack();if(!t)return;
+  try{const c=t.getCapabilities?t.getCapabilities():{};if(c.zoom){const zz=Math.min(Math.max(z,c.zoom.min||1),c.zoom.max||z);await t.applyConstraints({advanced:[{zoom:zz}]});}
+    else toast('このiPhoneではズームが使えません');}catch(e){}}
+$('btnZoom').onclick=()=>{zoomLv=zoomLv>=3?1:zoomLv+1;store.set('tn_zoom',zoomLv);setZoom(zoomLv);};
 // ---- 写真で読む(カメラが使えないとき用)
 $('btnPhoto').onclick=()=>{if(camOn)stopCam();$('fPhoto').click();};
 $('fPhoto').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
@@ -367,7 +377,7 @@ $('fPhoto').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f
   try{code=await scanPhoto(f);}catch(err){why=String(err&&err.message||err).slice(0,60);}
   if(code){beep();openEntry(String(code).trim());}else toast('読めませんでした。もう少し近づいて、まっすぐ撮ってください。'+(why?'('+why+')':''));
 };
-function getQR(){if(!qr){const F=Html5QrcodeSupportedFormats;qr=new Html5Qrcode('reader',{formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_39,F.CODE_128,F.ITF,F.CODE_93,F.CODABAR],verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:true}});}return qr;}
+function getQR(){if(!qr){const F=Html5QrcodeSupportedFormats;qr=new Html5Qrcode('reader',{formatsToSupport:[F.EAN_13,F.EAN_8,F.ITF,F.CODE_128,F.UPC_A],verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:true}});}return qr;}
 async function loadImg(f){
   try{return await createImageBitmap(f);}catch(e){}
   return await new Promise((ok,ng)=>{const im=new Image();im.onload=()=>ok(im);im.onerror=()=>ng(new Error('画像を開けません'));im.src=URL.createObjectURL(f);});
